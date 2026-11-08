@@ -22,6 +22,9 @@
   #fondo { position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:9; }
   #drawer { position:fixed; top:0; right:0; bottom:0; width:min(380px,92vw); background:var(--panel); border-left:1px solid var(--line); z-index:10; overflow-y:auto; }
   #toast { position:fixed; top:70px; left:50%; transform:translateX(-50%); background:var(--ok); color:#06240f; font-weight:700; padding:10px 18px; border-radius:10px; z-index:20; box-shadow:0 4px 16px rgba(0,0,0,.4); }
+  #vuelo { position:fixed; width:14px; height:14px; border-radius:50%; background:var(--acc); z-index:30; pointer-events:none; opacity:1; transition:transform .55s cubic-bezier(.5,-0.2,.75,.6), opacity .55s ease-in; }
+  @keyframes salto { 0%{transform:scale(1)} 40%{transform:scale(1.25)} 100%{transform:scale(1)} }
+  .salto { animation:salto .35s ease; }
   .linea { display:flex; align-items:center; gap:8px; margin:4px 0; font-size:14px; }
   .linea .q { color:var(--dim); }
   .linea button { background:var(--line); color:var(--txt); border:0; border-radius:6px; width:26px; height:26px; font-weight:700; cursor:pointer; }
@@ -196,18 +199,48 @@ function pintar() {
       let precioTexto = fmtINR(a.base) + ' · ≈ ' + fmtEUR(precioUnitario(a.base)) + '/ud';
       if (a.fin) precioTexto += ' · ⏳ ' + fmtFin(a.fin);
       div.querySelector('.precio').textContent = precioTexto;
-      div.querySelector('button').onclick = () => add(a);
+      div.querySelector('button').onclick = (ev) => add(a, ev.currentTarget);
       cont.appendChild(div);
     });
   });
   pintarCarrito();
 }
 
-function add(a) {
+function add(a, origen) {
   if (!carrito[a.nombre]) carrito[a.nombre] = { cat: a.categoria, base: a.base, qty: 0 };
   carrito[a.nombre].qty++;
   pintarCarrito();
-  abrirDrawer();
+  animarVuelo(origen);
+}
+
+/* Bolita que vuela desde el botón pulsado hasta el carrito del navbar */
+function animarVuelo(origen) {
+  const destino = document.getElementById('btnCarrito');
+  if (!origen || !destino) return;
+  const r1 = origen.getBoundingClientRect();
+  const r2 = destino.getBoundingClientRect();
+  const x0 = r1.left + r1.width / 2;
+  const y0 = r1.top + r1.height / 2;
+  const dx = (r2.left + r2.width / 2) - x0;
+  const dy = (r2.top + r2.height / 2) - y0;
+
+  const punto = document.createElement('div');
+  punto.id = 'vuelo';
+  punto.style.left = x0 + 'px';
+  punto.style.top = y0 + 'px';
+  document.body.appendChild(punto);
+
+  requestAnimationFrame(function () {
+    punto.style.transform = 'translate(' + dx + 'px,' + dy + 'px) scale(.2)';
+    punto.style.opacity = '0';
+  });
+
+  punto.addEventListener('transitionend', function () {
+    punto.remove();
+    destino.classList.remove('salto');
+    void destino.offsetWidth; // reinicia la animación del salto
+    destino.classList.add('salto');
+  });
 }
 
 function cambiar(nombre, delta) {
