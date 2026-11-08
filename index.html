@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PokéShop</title>
+<style>
+  :root { --bg:#0f172a; --panel:#1e293b; --line:#334155; --txt:#e2e8f0; --dim:#94a3b8; --acc:#38bdf8; --ok:#22c55e; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,sans-serif; background:var(--bg); color:var(--txt); padding-bottom:240px; }
+  header { padding:14px 16px; background:var(--panel); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; }
+  header h1 { margin:0; font-size:20px; }
+  header p { margin:4px 0 0; color:var(--dim); font-size:13px; }
+  #cats { padding:16px; max-width:720px; margin:0 auto; }
+  h2 { font-size:16px; margin:18px 0 8px; color:var(--acc); }
+  .item { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  .item .nombre { font-weight:600; }
+  .item .precio { color:var(--dim); font-size:13px; }
+  .item button { background:var(--acc); color:#0f172a; border:0; border-radius:8px; padding:8px 14px; font-weight:700; cursor:pointer; }
+  #estado { max-width:720px; margin:8px auto; padding:0 16px; color:var(--dim); font-size:13px; }
+  #carrito { position:fixed; left:0; right:0; bottom:0; background:var(--panel); border-top:1px solid var(--line); padding:12px 16px; z-index:5; }
+  #carrito .caja { max-width:720px; margin:0 auto; }
+  #carrito h3 { margin:0 0 8px; font-size:15px; }
+  .linea { display:flex; align-items:center; gap:8px; margin:4px 0; font-size:14px; }
+  .linea .q { color:var(--dim); }
+  .linea button { background:var(--line); color:var(--txt); border:0; border-radius:6px; width:26px; height:26px; font-weight:700; cursor:pointer; }
+  .totales { border-top:1px solid var(--line); margin-top:8px; padding-top:8px; font-size:14px; }
+  .totales .grande { font-size:17px; font-weight:700; color:var(--ok); margin-top:4px; }
+  #nombre { width:100%; margin:10px 0 0; padding:9px; border-radius:8px; border:1px solid var(--line); background:#0f172a; color:var(--txt); font-size:15px; }
+  #enviar { width:100%; margin-top:10px; background:var(--ok); color:#06240f; border:0; border-radius:8px; padding:12px; font-size:16px; font-weight:800; cursor:pointer; }
+  #enviar:disabled { opacity:.4; cursor:not-allowed; }
+  .vaciar { background:none; border:0; color:var(--dim); text-decoration:underline; cursor:pointer; font-size:12px; }
+  .oculto { display:none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🏪 PokéShop</h1>
+  <p id="subtitulo">Cargando catálogo…</p>
+</header>
+<div id="estado"></div>
+<div id="cats"></div>
+
+<div id="carrito" class="oculto">
+  <div class="caja">
+    <h3>🛒 Tu pedido <button class="vaciar" onclick="vaciar()">(vaciar)</button></h3>
+    <div id="lineas"></div>
+    <div class="totales">
+      <div id="desglose"></div>
+      <div class="grande" id="total"></div>
+    </div>
+    <input id="nombre" type="text" placeholder="Tu nombre o @usuario de Telegram" autocomplete="off">
+    <button id="enviar" onclick="enviar()" disabled>Enviar pedido 📤</button>
+    <p style="color:var(--dim);font-size:12px;margin:6px 0 0">Los precios son <b>orientativos</b>. Te confirmo el precio final.</p>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+ * CONFIGURACIÓN — cambia solo esto
+ * ============================================================ */
+const CONFIG = {
+  sheetId:      '1HYXcafvhTcmRsioH_v0hblwbpu_pGGE1ea9Oqid67vw', // el texto largo de la URL de la hoja
+  apiKey:       'AIzaSyDR3zZ2O38q1EaLgwFCyhpXZ6yCtaekcPI',                // clave de Google Cloud con Google Sheets API
+  formId:       'https://docs.google.com/forms/d/e/1FAIpQLSfGKz3OnfOGn9SF2VewMEQ6VGNu0TxT5XjUhIbgnNe3K0q7XA/',      // el texto largo de la URL del formulario
+  entryNombre:  1130581316,   // ID del campo "nombre" (del enlace pre-rellenado)
+  entryPedido:  768340345,   // ID del campo "pedido"
+  entryTotal:   2082756470,   // ID del campo "total"
+};
+
+const FORM_URL = 'https://docs.google.com/forms/d/e/' + CONFIG.formId + '/viewform';
+const FORM_RESPONSE_URL = 'https://docs.google.com/forms/d/e/' + CONFIG.formId + '/formResponse';
+
+/* Reglas por defecto (se sobreescriben con la pestaña Publico) */
+let REGLA = { tasa: 101.47, comisionPct: 0.02, paso: 50, moneda: 'EUR' };
+
+/* ============================================================ */
+let catalogo = [];
+const carrito = {}; // nombre -> {cat, base, qty}
+
+const fmtEUR = (x) => new Intl.NumberFormat('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}).format(x) + ' €';
+const fmtINR = (x) => new Intl.NumberFormat('es-ES').format(Math.round(x)) + ' ₹';
+const enc = encodeURIComponent;
+
+async function fetchRango(rango) {
+  const url = 'https://sheets.googleapis.com/v4/spreadsheets/' + CONFIG.sheetId +
+    '/values/' + encodeURIComponent(rango) + '?key=' + CONFIG.apiKey;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const j = await r.json();
+  if (j.error) throw new Error(j.error.message || j.error.status);
+  return j.values || [];
+}
+
+async function cargar() {
+  try {
+    // Ajustes públicos
+    try {
+      const filas = await fetchRango('Publico!A1:B10');
+      const mapa = {};
+      filas.forEach(f => { if (f.length >= 2) mapa[String(f[0]).trim()] = String(f[1]).trim(); });
+      const num = (k, def) => { const v = parseFloat(String(mapa[k] || '').replace(',', '.')); return isNaN(v) ? def : v; };
+      REGLA.tasa = num('tasa_inr_por_eur', REGLA.tasa);
+      REGLA.comisionPct = num('comision_pct', REGLA.comisionPct);
+      REGLA.paso = num('paso_redondeo', REGLA.paso);
+      REGLA.moneda = mapa.moneda_venta || REGLA.moneda;
+    } catch (e) { console.warn('Pestaña Publico no disponible', e); }
+
+    // Catálogo (columnas: Nombre, Categoria, Precio base (INR), Visible, Notas)
+    const filas = await fetchRango('Articulos!A2:E500');
+    catalogo = [];
+    filas.forEach(f => {
+      if (!f || f.length < 4) return;
+      const nombre = String(f[0]).trim();
+      const categoria = String(f[1]).trim() || 'Otros';
+      const base = parseFloat(String(f[2]).replace(',', '.'));
+      const visible = String(f[3]).trim().toUpperCase();
+      if (nombre && !isNaN(base) && base > 0 && visible === 'SI') {
+        catalogo.push({ nombre, categoria, base });
+      }
+    });
+    pintar();
+    document.getElementById('subtitulo').textContent = 'Precios orientativos en ' + REGLA.moneda;
+  } catch (e) {
+    document.getElementById('estado').textContent =
+      '⚠️ No se pudo cargar el catálogo (' + e.message + '). Revisa: hoja compartida "cualquiera con el enlace", API key habilitada para Google Sheets API y restringida a este dominio.';
+    document.getElementById('subtitulo').textContent = 'Catálogo no disponible';
+  }
+}
+
+function precioUnitario(base) {
+  const con = base * (1 + REGLA.comisionPct);
+  const total = Math.ceil(con / REGLA.paso) * REGLA.paso;
+  return total / REGLA.tasa;
+}
+
+function pintar() {
+  const cats = [];
+  catalogo.forEach(a => { if (!cats.includes(a.categoria)) cats.push(a.categoria); });
+  const cont = document.getElementById('cats');
+  cont.innerHTML = '';
+  cats.forEach(cat => {
+    const h = document.createElement('h2');
+    h.textContent = cat;
+    cont.appendChild(h);
+    catalogo.filter(a => a.categoria === cat).forEach(a => {
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = '<div><div class="nombre"></div><div class="precio"></div></div><button>Añadir +</button>';
+      div.querySelector('.nombre').textContent = a.nombre;
+      div.querySelector('.precio').textContent = fmtINR(a.base) + ' · ≈ ' + fmtEUR(precioUnitario(a.base)) + '/ud';
+      div.querySelector('button').onclick = () => add(a);
+      cont.appendChild(div);
+    });
+  });
+  pintarCarrito();
+}
+
+function add(a) {
+  if (!carrito[a.nombre]) carrito[a.nombre] = { cat: a.categoria, base: a.base, qty: 0 };
+  carrito[a.nombre].qty++;
+  pintarCarrito();
+}
+
+function cambiar(nombre, delta) {
+  if (!carrito[nombre]) return;
+  carrito[nombre].qty += delta;
+  if (carrito[nombre].qty <= 0) delete carrito[nombre];
+  pintarCarrito();
+}
+
+function vaciar() {
+  for (const k in carrito) delete carrito[k];
+  pintarCarrito();
+}
+
+function calcular() {
+  let subtotal = 0;
+  for (const k in carrito) subtotal += carrito[k].base * carrito[k].qty;
+  const con = subtotal * (1 + REGLA.comisionPct);
+  const total = Math.ceil(con / REGLA.paso) * REGLA.paso;
+  const eur = total / REGLA.tasa;
+  return { subtotal, total, eur, comision: total - subtotal };
+}
+
+function pintarCarrito() {
+  const hay = Object.keys(carrito).length > 0;
+  document.getElementById('carrito').classList.toggle('oculto', !hay);
+  if (!hay) return;
+  const cont = document.getElementById('lineas');
+  cont.innerHTML = '';
+  for (const nombre in carrito) {
+    const l = carrito[nombre];
+    const div = document.createElement('div');
+    div.className = 'linea';
+    div.innerHTML = '<button>-</button><span class="q"></span><span class="nom"></span><span style="flex:1"></span><span class="imp"></span><button>+</button>';
+    div.querySelector('.q').textContent = l.qty + '×';
+    div.querySelector('.nom').textContent = nombre;
+    div.querySelector('.imp').textContent = fmtINR(l.base * l.qty);
+    div.querySelectorAll('button')[0].onclick = () => cambiar(nombre, -1);
+    div.querySelectorAll('button')[1].onclick = () => cambiar(nombre, +1);
+    cont.appendChild(div);
+  }
+  const c = calcular();
+  document.getElementById('desglose').innerHTML =
+    'Subtotal: ' + fmtINR(c.subtotal) + '<br>' +
+    'Comisión (mín. ' + Math.round(REGLA.comisionPct*100) + '%): ' + fmtINR(c.comision) + '<br>' +
+    'Total: ' + fmtINR(c.total);
+  document.getElementById('total').textContent = '≈ ' + fmtEUR(c.eur) + ' (orientativo)';
+  document.getElementById('enviar').disabled = false;
+}
+
+async function enviar() {
+  const nombre = document.getElementById('nombre').value.trim();
+  if (!nombre) { alert('Pon tu nombre o @usuario de Telegram primero.'); return; }
+  const c = calcular();
+  const lineas = [];
+  for (const k in carrito) lineas.push(carrito[k].qty + '× ' + k);
+  const totalTexto = fmtINR(c.total) + ' ≈ ' + fmtEUR(c.eur);
+
+  const btn = document.getElementById('enviar');
+  btn.disabled = true;
+  btn.textContent = 'Enviando…';
+
+  // Envío directo al formulario (sin que el cliente lo vea)
+  const body = new FormData();
+  body.append('entry.' + CONFIG.entryNombre, nombre);
+  body.append('entry.' + CONFIG.entryPedido, lineas.join('\n'));
+  body.append('entry.' + CONFIG.entryTotal, totalTexto);
+  try {
+    await fetch(FORM_RESPONSE_URL, { method: 'POST', mode: 'no-cors', body });
+    document.getElementById('nombre').value = '';
+    vaciar();
+    btn.textContent = '✅ Pedido enviado. Te confirmo el precio por Telegram';
+    setTimeout(function () {
+      btn.textContent = 'Enviar pedido 📤';
+      btn.disabled = false;
+    }, 5000);
+  } catch (e) {
+    // Plan B: abrir el formulario ya rellenado
+    const url = FORM_URL +
+      '?usp=pp_url' +
+      '&entry.' + CONFIG.entryNombre + '=' + enc(nombre) +
+      '&entry.' + CONFIG.entryPedido + '=' + enc(lineas.join('\n')) +
+      '&entry.' + CONFIG.entryTotal + '=' + enc(totalTexto);
+    window.open(url, '_blank');
+    btn.disabled = false;
+    btn.textContent = 'Enviar pedido 📤';
+  }
+}
+
+cargar();
+</script>
+</body>
+</html>
