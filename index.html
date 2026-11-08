@@ -127,8 +127,9 @@ const fmtFin = (ms) => {
 
 async function fetchRango(rango) {
   const url = 'https://sheets.googleapis.com/v4/spreadsheets/' + CONFIG.sheetId +
-    '/values/' + encodeURIComponent(rango) + '?key=' + CONFIG.apiKey + '&_t=' + Date.now();
-  const r = await fetch(url);
+    '/values/' + encodeURIComponent(rango) + '?key=' + CONFIG.apiKey;
+  // OJO: no añadir parámetros extra a la URL (Google los rechaza con 400).
+  const r = await fetch(url, { cache: 'no-store' });
   if (!r.ok) throw new Error('HTTP ' + r.status);
   const j = await r.json();
   if (j.error) throw new Error(j.error.message || j.error.status);
