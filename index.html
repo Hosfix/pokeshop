@@ -313,13 +313,17 @@ async function enviar() {
   const lineas = [];
   for (const k in carrito) lineas.push(carrito[k].qty + '× ' + k);
   const totalTexto = fmtINR(c.total) + ' ≈ ' + fmtEUR(c.eur);
+  const detalle = lineas.join('\n') +
+    '\n\nBase: ' + fmtINR(c.subtotal) +
+    '\nCobrado: ' + fmtINR(c.total) +
+    '\nTe sobran: ' + fmtINR(c.comision) + ' (≈ ' + fmtEUR(c.comision / REGLA.tasa) + ')';
 
   // Plan de emergencia: formulario visible rellenado
   if (CONFIG.envioVisible) {
     const url = FORM_URL +
       '?usp=pp_url' +
       '&entry.' + CONFIG.entryNombre + '=' + enc(nombre) +
-      '&entry.' + CONFIG.entryPedido + '=' + enc(lineas.join('\n')) +
+      '&entry.' + CONFIG.entryPedido + '=' + enc(detalle) +
       '&entry.' + CONFIG.entryTotal + '=' + enc(totalTexto);
     window.open(url, '_blank');
     return;
@@ -332,7 +336,7 @@ async function enviar() {
   // Envío oculto directo al formulario
   const cuerpo =
     'entry.' + CONFIG.entryNombre + '=' + enc(nombre) +
-    '&entry.' + CONFIG.entryPedido + '=' + enc(lineas.join('\n')) +
+    '&entry.' + CONFIG.entryPedido + '=' + enc(detalle) +
     '&entry.' + CONFIG.entryTotal + '=' + enc(totalTexto) +
     '&fvv=1&draftResponse=[]&pageHistory=0';
   try {
@@ -351,7 +355,7 @@ async function enviar() {
     const url = FORM_URL +
       '?usp=pp_url' +
       '&entry.' + CONFIG.entryNombre + '=' + enc(nombre) +
-      '&entry.' + CONFIG.entryPedido + '=' + enc(lineas.join('\n')) +
+      '&entry.' + CONFIG.entryPedido + '=' + enc(detalle) +
       '&entry.' + CONFIG.entryTotal + '=' + enc(totalTexto);
     window.open(url, '_blank');
     btn.disabled = false;
