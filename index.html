@@ -62,7 +62,8 @@
 const CONFIG = {
   sheetId:      '1HYXcafvhTcmRsioH_v0hblwbpu_pGGE1ea9Oqid67vw', // el texto largo de la URL de la hoja
   apiKey:       'AIzaSyDR3zZ2O38q1EaLgwFCyhpXZ6yCtaekcPI',                // clave de Google Cloud con Google Sheets API
-  formId:       'https://docs.google.com/forms/d/e/1FAIpQLSfGKz3OnfOGn9SF2VewMEQ6VGNu0TxT5XjUhIbgnNe3K0q7XA/',      // el texto largo de la URL del formulario
+  formId:       '1FAIpQLSfGKz3OnfOGn9SF2VewMEQ6VGNu0TxT5XjUhIbgnNe3K0q7XA',      // solo el ID, sin https://docs.google.com/...
+  envioVisible: false,  // true = abrir el formulario rellenado (plan de emergencia si el envío oculto falla)
   entryNombre:  1130581316,   // ID del campo "nombre" (del enlace pre-rellenado)
   entryPedido:  768340345,   // ID del campo "pedido"
   entryTotal:   2082756470,   // ID del campo "total"
@@ -218,17 +219,34 @@ async function enviar() {
   for (const k in carrito) lineas.push(carrito[k].qty + '× ' + k);
   const totalTexto = fmtINR(c.total) + ' ≈ ' + fmtEUR(c.eur);
 
+  // Plan de emergencia: formulario visible rellenado
+  if (CONFIG.envioVisible) {
+    const url = FORM_URL +
+      '?usp=pp_url' +
+      '&entry.' + CONFIG.entryNombre + '=' + enc(nombre) +
+      '&entry.' + CONFIG.entryPedido + '=' + enc(lineas.join('\n')) +
+      '&entry.' + CONFIG.entryTotal + '=' + enc(totalTexto);
+    window.open(url, '_blank');
+    return;
+  }
+
   const btn = document.getElementById('enviar');
   btn.disabled = true;
   btn.textContent = 'Enviando…';
 
-  // Envío directo al formulario (sin que el cliente lo vea)
-  const body = new FormData();
-  body.append('entry.' + CONFIG.entryNombre, nombre);
-  body.append('entry.' + CONFIG.entryPedido, lineas.join('\n'));
-  body.append('entry.' + CONFIG.entryTotal, totalTexto);
+  // Envío oculto directo al formulario
+  const cuerpo =
+    'entry.' + CONFIG.entryNombre + '=' + enc(nombre) +
+    '&entry.' + CONFIG.entryPedido + '=' + enc(lineas.join('\n')) +
+    '&entry.' + CONFIG.entryTotal + '=' + enc(totalTexto) +
+    '&fvv=1&draftResponse=[]&pageHistory=0';
   try {
-    await fetch(FORM_RESPONSE_URL, { method: 'POST', mode: 'no-cors', body });
+    await fetch(FORM_RESPONSE_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: cuerpo
+    });
     document.getElementById('nombre').value = '';
     vaciar();
     btn.textContent = '✅ Pedido enviado. Te confirmo el precio por Telegram';
@@ -237,7 +255,6 @@ async function enviar() {
       btn.disabled = false;
     }, 5000);
   } catch (e) {
-    // Plan B: abrir el formulario ya rellenado
     const url = FORM_URL +
       '?usp=pp_url' +
       '&entry.' + CONFIG.entryNombre + '=' + enc(nombre) +
