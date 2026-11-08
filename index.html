@@ -196,7 +196,7 @@ function pintar() {
       div.className = 'item';
       div.innerHTML = '<div><div class="nombre"></div><div class="precio"></div></div><button>Añadir +</button>';
       div.querySelector('.nombre').textContent = a.nombre;
-      let precioTexto = fmtINR(a.base) + ' · ≈ ' + fmtEUR(precioUnitario(a.base)) + '/ud';
+      let precioTexto = '≈ ' + fmtEUR(precioUnitario(a.base)) + '/ud';
       if (a.fin) precioTexto += ' · ⏳ ' + fmtFin(a.fin);
       div.querySelector('.precio').textContent = precioTexto;
       div.querySelector('button').onclick = (ev) => add(a, ev.currentTarget);
@@ -291,10 +291,9 @@ function pintarCarrito() {
     const l = carrito[nombre];
     const div = document.createElement('div');
     div.className = 'linea';
-    div.innerHTML = '<button>-</button><span class="q"></span><span class="nom"></span><span style="flex:1"></span><span class="imp"></span><button>+</button>';
+    div.innerHTML = '<button>-</button><span class="q"></span><span class="nom" style="flex:1"></span><button>+</button>';
     div.querySelector('.q').textContent = l.qty + '×';
     div.querySelector('.nom').textContent = nombre;
-    div.querySelector('.imp').textContent = fmtINR(l.base * l.qty);
     div.querySelectorAll('button')[0].onclick = () => cambiar(nombre, -1);
     div.querySelectorAll('button')[1].onclick = () => cambiar(nombre, +1);
     cont.appendChild(div);
@@ -302,10 +301,7 @@ function pintarCarrito() {
   const c = calcular();
   const numArt = Object.values(carrito).reduce(function (s, l) { return s + l.qty; }, 0);
   document.getElementById('carritoResumen').textContent = numArt + ' · ' + fmtEUR(c.eur);
-  document.getElementById('desglose').innerHTML =
-    'Subtotal: ' + fmtINR(c.subtotal) + '<br>' +
-    'Comisión (mín. ' + Math.round(REGLA.comisionPct*100) + '%): ' + fmtINR(c.comision) + '<br>' +
-    'Total: ' + fmtINR(c.total);
+  document.getElementById('desglose').innerHTML = 'Total: ' + fmtINR(c.total);
   document.getElementById('total').textContent = '≈ ' + fmtEUR(c.eur) + ' (orientativo)';
   document.getElementById('enviar').disabled = false;
 }
